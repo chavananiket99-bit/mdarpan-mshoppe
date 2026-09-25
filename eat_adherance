@@ -1,0 +1,633 @@
+@model System.Data.DataTable
+@{
+	ViewBag.Title = "Index";
+	Layout = "~/Views/Shared/_Layout.cshtml";
+}
+
+<style>
+
+	.eta-summary {
+		margin: 10px 0 14px;
+		row-gap: 6px;
+	}
+
+	.summary-box .metric .dot {
+		width: 8px;
+		height: 8px;
+		border-radius: 50%;
+		display: inline-block;
+		background: #999;
+	}
+
+	/* Color coding — matches your ETA row highlights */
+	.metric-available .dot {
+		background: #f1c40f;
+	}
+	/* yellow */
+	.metric-available .value {
+		background: #fff8d6;
+		color: #7a5c00;
+	}
+
+	.metric-pending .dot {
+		background: #7f8c8d;
+	}
+	/* grey */
+	.metric-pending .value {
+		background: #eceff1;
+		color: #37474f;
+	}
+
+	.metric-fired .dot {
+		background: #e74c3c;
+	}
+	/* red */
+	.metric-fired .value {
+		background: #fdecea;
+		color: #a5261b;
+	}
+
+	.metric-adhered .dot {
+		background: #27ae60;
+	}
+	/* green */
+	.metric-adhered .value {
+		background: #e6f7ec;
+		color: #1e7e42;
+	}
+
+	.metric-notadhered .dot {
+		background: #c0392b;
+	}
+
+	.metric-notadhered .value {
+		background: #fdecea;
+		color: #a5261b;
+	}
+
+	.metric-executed .dot {
+		background: #2980b9;
+	}
+	/* blue */
+	.metric-executed .value {
+		background: #e7f1fa;
+		color: #1f5d8a;
+	}
+
+	.metric-remark .dot {
+		background: #8e44ad;
+	}
+	/* purple */
+	.metric-remark .value {
+		background: #f2e6f7;
+		color: #5e2b7a;
+	}
+
+	/* Responsive: wrap nicely on smaller widths */
+	@@media (max-width: 900px) {
+		.summary-box .metric {
+			padding: 4px 8px;
+		}
+
+		.summary-box .summary-title {
+			border-right: none;
+			padding-right: 0;
+		}
+	}
+
+
+	.custom_table table thead tr th {
+		padding: 4px 8px !important;
+	}
+
+	.custom_table table thead tr th {
+		border: 1px solid !important;
+	}
+
+	.custom_table table thead tr th {
+		vertical-align: middle;
+	}
+
+	.excel-main {
+		z-index: 1;
+		cursor: pointer;
+		right: 20%;
+		position: absolute;
+	}
+
+	.radio-main {
+		z-index: 1;
+		left: 18%;
+		position: absolute;
+		top: 1%;
+	}
+
+	.top-bar {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		flex-wrap: wrap;
+		gap: 8px;
+		margin-bottom: 10px;
+	}
+
+	.top-bar-left {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		flex-wrap: wrap;
+	}
+
+	.top-bar-right {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+	}
+
+	/* Summary box — horizontal layout (single row) */
+	.summary-box {
+		display: flex;
+		align-items: center;
+		gap: 4px;
+		background: #ffffff;
+		border: 1px solid #dde1e7;
+		border-left: 4px solid #c0392b;
+		border-radius: 6px;
+		padding: 8px 14px;
+		box-shadow: 0 2px 6px rgba(0,0,0,0.07);
+		flex-wrap: wrap;
+	}
+
+		.summary-box .summary-title {
+			font-size: 11px;
+			font-weight: 700;
+			text-transform: uppercase;
+			letter-spacing: 1px;
+			color: #c0392b;
+			padding-right: 12px;
+			border-right: 1px solid #eaecef;
+			margin-right: 8px;
+			white-space: nowrap;
+		}
+
+		.summary-box .metric {
+			display: flex;
+			align-items: center;
+			gap: 5px;
+			padding: 0 10px;
+			border-right: 1px solid #eaecef;
+		}
+
+			.summary-box .metric:last-child {
+				border-right: none;
+			}
+
+			.summary-box .metric .label {
+				font-size: 12px;
+				color: #555555;
+				font-weight: 500;
+				white-space: nowrap;
+			}
+
+			.summary-box .metric .value {
+				font-size: 13px;
+				font-weight: 700;
+				color: #1a1a1a;
+				background: #f0f2f5;
+				border-radius: 4px;
+				padding: 1px 8px;
+				min-width: 28px;
+				text-align: center;
+			}
+
+	input[type="radio"] + label {
+		width: auto;
+		max-width: none;
+		margin-bottom: 0;
+		white-space: nowrap;
+	}
+
+	.td-color-etaadhered {
+		background-color: lightgreen;
+	}
+
+	.td-color-etafired {
+		background-color: red;
+	}
+
+	.td-color-etaavailable {
+		background-color: yellow;
+	}
+
+	.eta-toggle-header-btn {
+		margin-left: 6px;
+		padding: 1px 7px;
+		font-size: 11px;
+		line-height: 16px;
+		border: 1px solid #888;
+		background: #fff;
+		border-radius: 3px;
+		cursor: pointer;
+		color: #333;
+	}
+
+		.eta-toggle-header-btn:hover {
+			background: #eef4fb;
+		}
+</style>
+
+
+<script src="~/js/table2excel.js"></script>
+<script src="~/js/xlsx.full.min.js"></script>
+<link href="~/css/HoldOn.css" rel="stylesheet" />
+<script src="~/Scripts/HoldOn.js"></script>
+<script>
+
+	function StartValidation() {
+		HoldOn.open({
+			theme: 'sk-fading-circle',
+			message: "<h4>Please wait....</h4>"
+		});
+	}
+	function StartDone() {
+		setTimeout(function () {
+			HoldOn.close();
+		});
+	}
+	function ETATDColor() {
+		let finalRemarkIndex = -1;
+
+		document.querySelectorAll("#ETAAdheranceTableID thead th").forEach((th, index) => {
+			if (th.innerText.trim() === "FinalRemark") {
+				finalRemarkIndex = index;
+			}
+		});
+
+		if (finalRemarkIndex >= 0) {
+
+			document.querySelectorAll("#ETAAdheranceTableID tbody tr").forEach((row) => {
+
+				let tds = row.querySelectorAll("td");
+				let finalRemark = tds[finalRemarkIndex]?.innerText.trim();
+
+				if (!finalRemark) return;
+
+				let etaColumn = finalRemark.split(' ')[0]; // ETA2 from "ETA2 Fired"
+
+				document.querySelectorAll("#ETAAdheranceTableID thead th").forEach((th, index) => {
+
+					if (finalRemark.includes("Adhered")) {
+						if (th.innerText.trim() === etaColumn) {
+
+							tds[index]?.classList.add("td-color-etaadhered");
+							return;
+						}
+					}
+					else if (finalRemark.includes("Fired")) {
+						if (th.innerText.trim() === etaColumn) {
+
+							tds[index]?.classList.add("td-color-etafired");
+							return;
+						}
+					}
+					else if (finalRemark.includes("Available")) {
+						if (th.innerText.trim() === etaColumn) {
+
+							tds[index]?.classList.add("td-color-etaavailable");
+							return;
+						}
+					}
+
+
+
+				});
+
+			});
+
+		}
+	}
+
+	// Last "always visible" ETA column
+	var VISIBLE_ETA_LIMIT = 4;
+
+	function GetHeaderLabel($th) {
+		var label = $th.contents().filter(function () { return this.nodeType === 3; }).text().trim();
+		return label || $th.text().trim();
+	}
+
+	function GetExtraEtaColumns(dt) {
+		var extra = [];
+		dt.columns().every(function () {
+			var idx = this.index();
+			var label = GetHeaderLabel($(dt.column(idx).header()));
+			var m = label.match(/^ETA(\d+)$/i);
+			if (m && parseInt(m[1], 10) > VISIBLE_ETA_LIMIT) extra.push(idx);
+		});
+		return extra;
+	}
+
+	function InjectToggleButton(dt) {
+		var $targetHeader = null;
+		dt.columns().every(function () {
+			var idx = this.index();
+			var $h = $(dt.column(idx).header());
+			if (GetHeaderLabel($h) === "ETA" + VISIBLE_ETA_LIMIT) $targetHeader = $h;
+		});
+		if (!$targetHeader || $targetHeader.find(".eta-toggle-header-btn").length) return;
+		if (!GetExtraEtaColumns(dt).length) return;
+
+		var $btn = $('<button type="button" class="eta-toggle-header-btn" title="Show / hide extra ETA columns">➕ More</button>');
+		$btn.on("click", function (e) {
+			e.stopPropagation();
+			var expanded = $btn.data("expanded") === true;
+			var extras = GetExtraEtaColumns(dt);
+			dt.columns(extras).visible(!expanded, false);
+			dt.columns.adjust().draw(false);
+			$btn.data("expanded", !expanded);
+			$btn.html(!expanded ? "➖ Less" : "➕ More");
+		});
+		$targetHeader.append($btn);
+	}
+
+	function ApplyEtaVisibility(dt) {
+		var extra = GetExtraEtaColumns(dt);
+		if (extra.length) {
+			dt.columns(extra).visible(false, false);
+			dt.columns.adjust();
+		}
+		InjectToggleButton(dt);
+	}
+	$(document).ready(function () {
+
+		debugger;
+
+
+		/*for datatable scroll properly*/
+		jQuery('#ETAAdheranceTableID').wrap('<div class="dataTables_scroll" />');
+
+		var table = $('#ETAAdheranceTableID').DataTable({
+			paging: true,
+			"aLengthMenu": [[10, 25, 50, 100, 200, 300, 500], [10, 25, 50, 100, 200, 300, 500]],
+			"iDisplayLength": 50,
+			"oLanguage": { "sSearch": "" },
+			drawCallback: function () {
+				ETATDColor();
+			}
+		});
+
+		ApplyEtaVisibility(table);   // <-- add this line
+
+
+
+		$("#btnExportToExcel").click(function () {
+			debugger;
+			// Get the DataTable instance
+			var table = $("#ETAAdheranceTableID").DataTable();
+
+			// Create a new workbook and worksheet
+			var wb = XLSX.utils.book_new();
+			var wsData = [];
+
+			// Get the header text and append it to the worksheet data, skipping the first column
+			var headers = [];
+			$("#ETAAdheranceTableID thead th").each(function (index) {
+				headers.push($(this).text().trim());
+			});
+
+			wsData.push(headers);
+
+			// Get all data from the DataTable
+			var allData = table.rows().data();
+
+			// Function to strip HTML tags and remove title attributes from hyperlinks
+			function stripHTML(html) {
+				var tempDiv = document.createElement("div");
+				tempDiv.innerHTML = html;
+				return tempDiv.textContent || tempDiv.innerText || "";
+			}
+
+			// Process each row and append the data to worksheet data, skipping the first column
+			allData.each(function (rowData) {
+				var row = [];
+				$.each(rowData, function (index, cellData) {
+
+					// Strip any HTML from the cell data
+					var cleanCellData = stripHTML(cellData);
+					cleanCellData = cleanCellData.trim();
+					//if (cleanCellData.length == 20) {
+					//	row.push(cleanCellData.substr(cleanCellData.length - 10, 10));
+					//}
+					row.push(cleanCellData);
+				});
+
+				// Ensure row has the same number of columns as the header
+				while (row.length < headers.length) {
+					row.push(""); // Add empty cells if necessary to match column count
+				}
+
+				wsData.push(row);
+			});
+
+			// Convert worksheet data to a worksheet
+			var ws = XLSX.utils.aoa_to_sheet(wsData);
+
+			// Append the worksheet to the workbook
+			XLSX.utils.book_append_sheet(wb, ws, "Sheet1");
+
+			// Trigger Excel file download
+			XLSX.writeFile(wb, "ETAAdherance.xlsx");
+		});
+
+		$(document).on('change', '#OrdTypeID,#SectorID', function () {
+			debugger;
+                        setTimeout(function () {
+					        StartValidation('sk-fading-circle');
+                        }, 0);
+					    $.ajax({
+					        type: "POST",
+							url: "@Url.Action("FilterETAAdheranceData", "ETAAdherance", new { Area = "" })",
+							data: { OrdType: $("#OrdTypeID").val(), Sector: $("#SectorID").val()  },
+							success: function (data) {
+								debugger;
+								if (data.ID == 1) {
+									$("#ETAAdheranceDivID").html(data.Response);
+									document.getElementById("ETAAvailableID").innerHTML =data?.objcount?.ETAAvailableCount ?? 0;
+									document.getElementById("ETAPendingID").innerHTML=data?.objcount?.ETAPending??0;
+									document.getElementById("ETAFiredID").innerHTML=data?.objcount?.ETAFiredCount??0;
+									document.getElementById("ETAAdheredID").innerHTML = data?.objcount?.ETAAdheredCount ?? 0;
+									document.getElementById("ETANotAdheredID").innerHTML = data?.objcount?.ETANotAdheredCount ?? 0;
+									document.getElementById("OrderExecutedID").innerHTML=data?.objcount?.OrderExecutedCount??0;
+									document.getElementById("RemarkID").innerHTML=data?.objcount?.RemarkCount??0;
+									StartDone();
+								}
+								else {
+									swal(data.Message);
+									StartDone();
+								}
+
+						    },
+						    error: function (jqXHR, exception) {
+								swal("Sorry could not process your request. Please try after some time");
+								StartDone();
+						    }
+					    })
+
+		});
+
+
+	});
+
+
+</script>
+
+<script type="text/javascript">
+	$(function () {
+		setTimeout(function () { $("#ErrorMessage").fadeOut(1500); }, 5000)
+	})
+</script>
+
+
+
+@{
+	string FailedMessage = TempData["ETAAdheranceErrorMessage"] as string;
+
+	if (FailedMessage != null)
+	{
+		<div class="target alert alert-danger fade in" id="ErrorMessage" style="padding:8px; font-size:12px; margin-bottom:0; ">
+			<a href="#" class="close" data-dismiss="alert" aria-label="close"><i class="fa fa-close"></i></a>
+			<i><img src="~/Images/Notifier%20Images/Errormsg.png" width="16" />&nbsp;&nbsp;</i>&nbsp;<b>Error!</b>&nbsp;&nbsp;@TempData["ETAAdheranceErrorMessage"]
+		</div>
+		<br />
+	}
+}
+
+@if (Model != null)
+{
+	<div class="table_box custom_table zone-state-table" style="padding: 10px;">
+		<div class="top-bar">
+            <div class="top-bar-left">
+                @*@Html.DropDownList("OrdType", ViewBag.OrdType as SelectList, "Order Type", new { id = "OrdTypeID", @class = "form-control col-xs-12 DropdownPlant" })
+                @Html.DropDownList("OrdType", ViewBag.sectors as SelectList, "Select Sector", new { id = "SectorID", @class = "form-control col-xs-12 DropdownPlant" })*@
+                @Html.DropDownList(
+                    "OrdType",
+                    new SelectList(new[]
+                    {
+                        new { Value = "SO", Text = "Sales Order" },
+                        new { Value = "PO", Text = "Purchase Order" },
+                        new { Value = "RO", Text = "Return Order" }
+                    }, "Value", "Text"),
+                    "Order Type",
+                    new { id = "OrdTypeID", @class = "form-control col-xs-12 DropdownPlant" }
+                )
+                @Html.DropDownList(
+                    "Sector",
+                    new SelectList(new[]
+                    {
+                        new { Value = "AUTO", Text = "Automotive" },
+                        new { Value = "FARM", Text = "Farm Equipment" },
+                        new { Value = "CONST", Text = "Construction" }
+                    }, "Value", "Text"),
+                    "Select Sector",
+                    new { id = "SectorID", @class = "form-control col-xs-12 DropdownPlant" }
+
+                )   
+				
+				<a id="btnExportToExcel" class="btn" style="background-color: #858585; color: #fff; border: none">Export<i class="fa fa-file-excel-o" style="margin-left: 5px;"></i></a>
+            </div>
+		</div>
+		<!-- TABLE -->
+		@*<label>ETA Available :</label> <span id="ETAAvailableID">@TempData["ETAAvailableCount"]</span>
+			<label>ETA Pending :</label> <span id="ETAPendingID">@TempData["ETAPending"]</span>
+			<label>ETA Fired :</label> <span id="ETAFiredID">@TempData["ETAFiredCount"]</span>
+			<label>ETA Adhered :</label> <span id="ETAAdheredID">@TempData["ETAAdheredCount"]</span>
+			<label>ETA Not Adhered :</label> <span id="ETANotAdheredID">@TempData["ETANotAdheredCount"]</span>
+			<label>Order Executed :</label> <span id="OrderExecutedID">@TempData["OrderExecutedCount"]</span>
+			<label>Remarks Available :</label> <span id="RemarkID">@TempData["RemarkCount"]</span>*@
+
+		<div class="summary-box eta-summary">
+			<span class="summary-title">ETA Summary</span>
+
+			<div class="metric metric-available" title="ETA Available">
+				<span class="dot"></span>
+				<span class="label">ETA Available</span>
+				<span class="value" id="ETAAvailableID">@TempData["ETAAvailableCount"]</span>
+			</div>
+
+			<div class="metric metric-pending" title="ETA Pending">
+				<span class="dot"></span>
+				<span class="label">ETA Pending</span>
+				<span class="value" id="ETAPendingID">@TempData["ETAPending"]</span>
+			</div>
+
+			<div class="metric metric-fired" title="ETA Fired">
+				<span class="dot"></span>
+				<span class="label">ETA Fired</span>
+				<span class="value" id="ETAFiredID">@TempData["ETAFiredCount"]</span>
+			</div>
+
+			<div class="metric metric-adhered" title="ETA Adhered">
+				<span class="dot"></span>
+				<span class="label">ETA Adhered</span>
+				<span class="value" id="ETAAdheredID">@TempData["ETAAdheredCount"]</span>
+			</div>
+
+			<div class="metric metric-notadhered" title="ETA Not Adhered">
+				<span class="dot"></span>
+				<span class="label">ETA Not Adhered</span>
+				<span class="value" id="ETANotAdheredID">@TempData["ETANotAdheredCount"]</span>
+			</div>
+
+			<div class="metric metric-executed" title="Order Executed">
+				<span class="dot"></span>
+				<span class="label">Order Executed</span>
+				<span class="value" id="OrderExecutedID">@TempData["OrderExecutedCount"]</span>
+			</div>
+
+			<div class="metric metric-remark" title="Remarks Available">
+				<span class="dot"></span>
+				<span class="label">Remarks</span>
+				<span class="value" id="RemarkID">@TempData["RemarkCount"]</span>
+			</div>
+		</div>
+
+
+		<div id="ETAAdheranceDivID">
+
+			<table id="ETAAdheranceTableID" class="table table-bordered compact stripe">
+				<thead>
+					<tr>
+						@foreach (System.Data.DataColumn col in Model.Columns)
+						{
+							<th>@col.ColumnName</th>
+						}
+					</tr>
+
+				</thead>
+
+				<tbody>
+					@foreach (System.Data.DataRow row in Model.Rows)
+					{
+						<tr>
+							@foreach (var item in row.ItemArray)
+							{
+								<td>@item</td>
+							}
+						</tr>
+					}
+
+
+				</tbody>
+			</table>
+		</div>
+
+	</div>
+}
+
+
+
+
+
+
+
+
+
