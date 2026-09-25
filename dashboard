@@ -1,0 +1,450 @@
+@model Mdarpan.Models.BAL.MshoppeDashboard
+@{
+	ViewBag.Title = "Index";
+	Layout = "~/Views/Shared/_Layout.cshtml";
+}
+
+<style>
+	.custom_table table thead tr th {
+		padding: 4px 8px !important;
+	}
+
+	.custom_table table thead tr th {
+		border: 1px solid !important;
+	}
+
+	.custom_table table thead tr th {
+		vertical-align: middle;
+	}
+
+	.excel-main {
+		z-index: 1;
+		cursor: pointer;
+		right: 20%;
+		position: absolute;
+	}
+
+	.radio-main {
+		z-index: 1;
+		left: 18%;
+		position: absolute;
+		top: 1%;
+	}
+
+	.top-bar {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		flex-wrap: wrap;
+		gap: 8px;
+		margin-bottom: 10px;
+	}
+
+	.top-bar-left {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		flex-wrap: wrap;
+	}
+
+	.top-bar-right {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+	}
+
+	/* Summary box — horizontal layout (single row) */
+	.summary-box {
+		display: flex;
+		align-items: center;
+		gap: 4px;
+		background: #ffffff;
+		border: 1px solid #dde1e7;
+		border-left: 4px solid #c0392b;
+		border-radius: 6px;
+		padding: 8px 14px;
+		box-shadow: 0 2px 6px rgba(0,0,0,0.07);
+		flex-wrap: wrap;
+	}
+
+		.summary-box .summary-title {
+			font-size: 11px;
+			font-weight: 700;
+			text-transform: uppercase;
+			letter-spacing: 1px;
+			color: #c0392b;
+			padding-right: 12px;
+			border-right: 1px solid #eaecef;
+			margin-right: 8px;
+			white-space: nowrap;
+		}
+
+		.summary-box .metric {
+			display: flex;
+			align-items: center;
+			gap: 5px;
+			padding: 0 10px;
+			border-right: 1px solid #eaecef;
+		}
+
+			.summary-box .metric:last-child {
+				border-right: none;
+			}
+
+			.summary-box .metric .label {
+				font-size: 12px;
+				color: #555555;
+				font-weight: 500;
+				white-space: nowrap;
+			}
+
+			.summary-box .metric .value {
+				font-size: 13px;
+				font-weight: 700;
+				color: #1a1a1a;
+				background: #f0f2f5;
+				border-radius: 4px;
+				padding: 1px 8px;
+				min-width: 28px;
+				text-align: center;
+			}
+
+	input[type="radio"] + label {
+		width: auto;
+		max-width: none;
+		margin-bottom: 0;
+		white-space: nowrap;
+	}
+	.HyperLink {
+		color: blue;
+	}
+</style>
+
+<script src="~/js/table2excel.js"></script>
+<script src="~/js/xlsx.full.min.js"></script>
+<link href="~/css/HoldOn.css" rel="stylesheet" />
+<script src="~/Scripts/HoldOn.js"></script>
+<script type="text/javascript">
+	function StartValidation() {
+		HoldOn.open({
+			theme: 'sk-fading-circle',
+			message: "<h4>Please wait....</h4>"
+		});
+	}
+	function StartDone() {
+		setTimeout(function () {
+			HoldOn.close();
+		});
+	}
+</script>
+<script>
+	$(document).ready(function () {
+		/*for datatable scroll properly*/
+		jQuery('#MshoppeTableID,#MshoppeTableID1').wrap('<div class="dataTables_scroll" />');
+
+		var table = $('#MshoppeTableID,#MshoppeTableID1').DataTable({
+			paging: true,
+			"aLengthMenu": [[10, 25, 50, 100, 200, 300, 500], [10, 25, 50, 100, 200, 300, 500]],
+			"iDisplayLength": 50,
+			"oLanguage": { "sSearch": "" }
+		});
+
+		// Move / inject the Export button next to the DataTables search box
+		var $exportBtn = $('<button id="btnExportToExcel" class="btn" style="background-color: #858585; color: #fff; border: none">Export<i class="fa fa-file-excel-o" style="margin-left: 5px;"></i></button>');
+		$('#MshoppeTableID').closest('.dataTables_wrapper').find('.dataTables_filter').append($exportBtn);
+
+		$("#btnExportToExcel").click(function () {
+			debugger;
+			// Get the DataTable instance
+			var table = $("#MshoppeTableID").DataTable();
+
+			// Create a new workbook and worksheet
+			var wb = XLSX.utils.book_new();
+			var wsData = [];
+
+			// Get the header text and append it to the worksheet data, skipping the first column
+			var headers = [];
+			$("#MshoppeTableID thead th").each(function (index) {
+						headers.push($(this).text().trim());
+				});
+
+			wsData.push(headers);
+
+			// Get all data from the DataTable
+			var allData = table.rows().data();
+
+			// Function to strip HTML tags and remove title attributes from hyperlinks
+			function stripHTML(html) {
+				var tempDiv = document.createElement("div");
+				tempDiv.innerHTML = html;
+				return tempDiv.textContent || tempDiv.innerText || "";
+			}
+
+			// Process each row and append the data to worksheet data, skipping the first column
+			allData.each(function (rowData) {
+				var row = [];
+				$.each(rowData, function (index, cellData) {
+
+						// Strip any HTML from the cell data
+						var cleanCellData = stripHTML(cellData);
+						cleanCellData = cleanCellData.trim();
+						//if (cleanCellData.length == 20) {
+						//	row.push(cleanCellData.substr(cleanCellData.length - 10, 10));
+						//}
+						row.push(cleanCellData);
+				});
+
+				// Ensure row has the same number of columns as the header
+				while (row.length < headers.length) {
+					row.push(""); // Add empty cells if necessary to match column count
+				}
+
+				wsData.push(row);
+			});
+
+			// Convert worksheet data to a worksheet
+			var ws = XLSX.utils.aoa_to_sheet(wsData);
+
+			// Append the worksheet to the workbook
+			XLSX.utils.book_append_sheet(wb, ws, "Sheet1");
+
+			// Trigger Excel file download
+			XLSX.writeFile(wb, "MshoppeDashboard.xlsx");
+		});
+
+		document.querySelectorAll("#DistMshopeeCountDivID a").forEach((hyperlink) => {
+			hyperlink.addEventListener("click", function (e) {
+				debugger;
+				if (e.target.getAttribute("type") !== undefined) {
+					setTimeout(function () {
+						StartValidation('sk-fading-circle');
+
+					}, 0);
+					$.ajax({
+					        type: "POST",
+						url: "@Url.Action("MshoppeDashboard", "MshoppeDashboard", new { Area = "DistributorLogin" })",
+						data: { Type: e.target.type, ZoneID: e.target.zoneid, StateID: e.target.stateid,},
+							success: function (data) {
+								debugger;
+								if (data.ID == 1) {
+									$("#MshoppePartialDivID").html(data.Response);
+									StartDone();
+								}
+								else {
+									swal(data.Message);
+									StartDone();
+								}
+
+						    },
+						    error: function (jqXHR, exception) {
+								swal("Sorry could not process your request. Please try after some time");
+								StartDone();
+						    }
+					    })
+				}
+
+			})
+
+		})
+
+		document.querySelectorAll(".HyperLink").forEach((hyperlink) => {
+				hyperlink.addEventListener("click", function (e) {
+				debugger;
+					if (e.target.getAttribute("type") !== undefined) {
+						setTimeout(function () {
+							StartValidation('sk-fading-circle');
+
+						}, 0);
+						var type = this.getAttribute("type");
+						var zoneid = this.getAttribute("zoneid");
+						var stateid = this.getAttribute("stateid");
+					$.ajax({
+					        type: "POST",
+						url: "@Url.Action("MshoppeDashboard", "MshoppeDashboard", new { Area = "DistributorLogin" })",
+						data: { Type: type, ZoneID: zoneid, StateID: stateid},
+							success: function (data) {
+								debugger;
+								if (data.ID == 1) {
+									$("#MshoppePartialDivID").html(data.Response);
+									StartDone();
+								}
+								else {
+									swal(data.Message);
+									StartDone();
+								}
+
+						    },
+						    error: function (jqXHR, exception) {
+								swal("Sorry could not process your request. Please try after some time");
+								StartDone();
+						    }
+					    })
+				}
+
+			})
+			
+		})
+	});
+</script>
+
+
+
+<script type="text/javascript">
+	$(function () {
+		setTimeout(function () { $("#ErrorMessage").fadeOut(1500); }, 5000)
+	})
+</script>
+
+@{
+	string FailedMessage = TempData["MshoppeErrorMessage"] as string;
+
+	if (FailedMessage != null)
+	{
+		<div class="target alert alert-danger fade in" id="ErrorMessage" style="padding:8px; font-size:12px; margin-bottom:0; ">
+			<a href="#" class="close" data-dismiss="alert" aria-label="close"><i class="fa fa-close"></i></a>
+			<i><img src="~/Images/Notifier%20Images/Errormsg.png" width="16" />&nbsp;&nbsp;</i>&nbsp;<b>Error!</b>&nbsp;&nbsp;@TempData["MshoppeErrorMessage"]
+		</div>
+		<br />
+	}
+}
+
+@if (Model != null)
+{
+
+<div class="table_box custom_table zone-state-table" style="padding: 10px;">
+	<div class="top-bar">
+		<div class="top-bar-left" id="DistMshopeeCountDivID">
+			<label for="DistributorCount"><strong> Distributor Count :</strong></label>
+			<a href="javascript:void(0)" stateid="0" zoneid="0" class="HyperLink" type="8">@Model.DistributorCount</a>
+
+			<label for="DistributorCount"><strong>Mshoppe Count :</strong></label>
+			<a href="javascript:void(0)" stateid="0" zoneid="0" class="HyperLink" type="9">@Model.MshoppeCount</a>
+			@*<a id="btnExportToExcel" class="btn" style="background-color: #858585; color: #fff; border: none">Export<i class="fa fa-file-excel-o" style="margin-left: 5px;"></i></a>*@
+		</div>
+	</div>
+	@*<button id="btnExportToExcel" class="btn" style="background-color: #858585; color: #fff; border: none">Export<i class="fa fa-file-excel-o" style="margin-left: 5px;"></i></button>*@
+
+	<!-- TABLE -->
+	<table id="MshoppeTableID" class="table table-bordered compact stripe">
+		<thead>
+			<tr>
+				<th>Zone</th>
+				<th>State</th>
+				<th>Distributor Count</th>
+				<th>Mshoppe Count</th>
+				<th>DaySupportEmail Count</th>
+				<th>DayTechSupportEmail Count</th>
+				<th>MonthSupportEmail Count</th>
+				<th>MonthTechSupportEmail Count</th>
+				<th>Login Count</th>
+			</tr>
+
+		</thead>
+
+		<tbody>
+			@if (Model.objMshoppeDashZoneWiseData.Count > 0)
+			{
+				foreach (var obj in Model.objMshoppeDashZoneWiseData)
+				{
+					<tr>
+						<td>@obj.ZoneName</td>
+						<td>@obj.State</td>
+						<td>
+							@if (@obj.distributorCount != 0)
+							{
+								<a href="javascript:void(0)" class="HyperLink" stateid="@obj.StateId" zoneid="@obj.ZoneId" type="1">@obj.distributorCount</a>
+							}
+							else
+							{
+								@obj.distributorCount
+							}
+						</td>
+						<td>
+							@if (@obj.mshoppeCount != 0)
+							{
+								<a href="javascript:void(0)" class="HyperLink" stateid="@obj.StateId" zoneid="@obj.ZoneId" type="2">@obj.mshoppeCount</a>
+							}
+							else
+							{
+								@obj.mshoppeCount
+							}
+
+						</td>
+						<td>
+
+							@if (@obj.mshoppeCount != 0)
+							{
+								<a href="javascript:void(0)" class="HyperLink" stateid="@obj.StateId" zoneid="@obj.ZoneId" type="3">@obj.daySupportCount</a>
+							}
+							else
+							{
+								@obj.daySupportCount
+							}
+
+						</td>
+						<td>
+							@if (@obj.mshoppeCount != 0)
+							{
+								<a href="javascript:void(0)" class="HyperLink" stateid="@obj.StateId" zoneid="@obj.ZoneId" type="4">@obj.dayTechSupportCount</a>
+							}
+							else
+							{
+								@obj.dayTechSupportCount
+							}
+
+						</td>
+						<td>
+							@if (@obj.mshoppeCount != 0)
+							{
+								<a href="javascript:void(0)" class="HyperLink" stateid="@obj.StateId" zoneid="@obj.ZoneId" type="5">@obj.monthSupportCount</a>
+							}
+							else
+							{
+								@obj.monthSupportCount
+							}
+
+						</td>
+						<td>
+							@if (@obj.mshoppeCount != 0)
+							{
+								<a href="javascript:void(0)" class="HyperLink" stateid="@obj.StateId" zoneid="@obj.ZoneId" type="6">@obj.monthTechSupportCount</a>
+							}
+							else
+							{
+								@obj.monthTechSupportCount
+							}
+
+						</td>
+						<td>
+							@if (@obj.mshoppeCount != 0)
+							{
+								<a href="javascript:void(0)" class="HyperLink" stateid="@obj.StateId" zoneid="@obj.ZoneId" type="7">@obj.loginCount</a>
+							}
+							else
+							{
+								@obj.loginCount
+							}
+
+						</td>
+					</tr>
+				}
+			}
+
+		</tbody>
+	</table>
+
+</div>
+
+<div id="MshoppePartialDivID">
+
+</div>
+}
+
+
+
+
+
+
+
+
+
