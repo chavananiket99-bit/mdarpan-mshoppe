@@ -1,0 +1,1040 @@
+@model Mdarpan.Models.BAL.CalendarMonthViewModel
+
+@{
+	Layout = "~/Views/Shared/_Layout.cshtml";
+	ViewBag.Title = string.Format("Training Calendar - {0:MMMM yyyy}", new DateTime(Model.Year, Model.Month, 1));
+	ViewBag.ActiveTab = "Calendar";
+	var monthName = new DateTime(Model.Year, Model.Month, 1).ToString("MMMM yyyy");
+	var prevMonth = Model.Month > 1 ? Model.Month - 1 : 12;
+	var prevYear = Model.Month > 1 ? Model.Year : Model.Year - 1;
+	var nextMonth = Model.Month < 12 ? Model.Month + 1 : 1;
+	var nextYear = Model.Month < 12 ? Model.Year : Model.Year + 1;
+	string[] dayNames = { "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat" };
+	// Use TodayDate from model (set using IST timezone in controller)
+	var todayMonth = Model.TodayDate.Month;
+	var todayYear = Model.TodayDate.Year;
+
+}
+<link href="~/Content/TrainingCalendar/site.css" rel="stylesheet" />
+<style>
+	.form-control {
+		background: inherit !important;
+	}
+	.disable-fields
+	{
+		cursor: not-allowed;
+		background-color: #f5f5f5 !important;
+	}
+	#newMeetingForm .form-control,
+	input[type="text"],
+	input[type="datetime-local"],
+	textarea {
+		color: #212529 !important; /* solid dark text */
+		opacity: 1 !important;
+
+	}
+
+		#newMeetingForm .form-control:not(:focus)
+		 {
+			color: #212529 !important; /* override the fade rule */
+			opacity: 1 !important;
+			background-color: #fff !important;
+		}
+	.mini-toast {
+		position: fixed;
+		bottom: 30px;
+		left: 50%;
+		transform: translateX(-50%);
+		background: #323232;
+		color: #fff;
+		padding: 8px 16px;
+		border-radius: 4px;
+		font-size: 13px;
+		z-index: 99999;
+		box-shadow: 0 2px 8px rgba(0,0,0,.2);
+	}
+	
+</style>
+<!-- Page Header -->
+<div class="page-header">
+	<h2><i class="fas fa-calendar-alt mr-2"></i>TRAINING CALENDAR</h2>
+	<span style="font-size:0.85rem;opacity:0.8;">@monthName</span>
+</div>
+
+<!-- Calendar Card -->
+<div class="calendar-card">
+	<!-- Gradient Header with Month Navigation -->
+	<div class="calendar-header-bar">
+		<h2>@monthName</h2>
+		<div class="d-flex align-items-center" style="gap:8px;">
+			<a href="@Url.Action("Index", "TrainingDashboard", new {Area="TrainingCalendar", month = prevMonth, year = prevYear })" class="calendar-nav-btn">
+				<i class="fas fa-chevron-left"></i>
+			</a>
+			<a href="@Url.Action("Index", "TrainingDashboard", new {Area="TrainingCalendar", month = todayMonth, year = todayYear })" class="calendar-nav-today">
+				Today
+			</a>
+			<a href="@Url.Action("Index", "TrainingDashboard", new {Area="TrainingCalendar", month = nextMonth, year = nextYear })" class="calendar-nav-btn">
+				<i class="fas fa-chevron-right"></i>
+			</a>
+		</div>
+	</div>
+
+	<!-- Day Headers -->
+	<div class="cal-day-header">
+		@foreach (var d in dayNames)
+		{
+			<span>@d</span>
+		}
+	</div>
+
+	<!-- Calendar Grid -->
+	<div class="cal-grid">
+		@foreach (var day in Model.Days)
+		{
+			var hasSession = day.Sessions.Count > 0;
+			var isPast = day.FullDate.Date < Model.TodayDate.Date;
+			var cellClass = "cal-cell";
+			if (!day.IsCurrentMonth) { cellClass += " other-month"; }
+			if (day.FullDate.Date == Model.TodayDate.Date) { cellClass += " today"; }
+			if (hasSession) { cellClass += " has-sessions"; }
+			if (isPast) { cellClass += " past-day"; }
+
+			<div class="@cellClass" data-date="@day.FullDate.ToString("yyyy-MM-dd")"
+				 @if (Session["Role"] as string == "Admin") { if (isPast) { <text> onclick="showPastDateAlert()" </text>  } else { <text> onclick="openNewMeeting('@day.FullDate.ToString("yyyy-MM-dd")')"
+				 </text> } }>
+				<div class="cal-date">@day.Day</div>
+				@foreach (var s in day.Sessions.Take(2))
+				{
+					var badge = "type-default";
+					var title = s.Title ?? "";
+					if (title.IndexOf("Stand", StringComparison.OrdinalIgnoreCase) >= 0) { badge = "type-standup"; }
+					else if (title.IndexOf("Focus", StringComparison.OrdinalIgnoreCase) >= 0) { badge = "type-focus"; }
+					else if (title.IndexOf("Team", StringComparison.OrdinalIgnoreCase) >= 0) { badge = "type-team"; }
+
+					<span class="cal-session @badge" title="@s.Title&#10;@s.StartLocal - @s.EndLocal"
+						  onclick="event.stopPropagation(); showSessionDetail(@s.SessionId);">
+						@s.Title
+					</span>
+				}
+				@if (day.Sessions.Count > 2)
+				{
+					var daySessJson = Newtonsoft.Json.JsonConvert.SerializeObject(
+						day.Sessions.Select(s => new { s.SessionId, s.Title, Start = s.StartLocal ?? "", End = s.EndLocal ?? "" }));
+					<span class="cal-more" onclick="event.stopPropagation(); showDaySessions(this)"
+						  data-date="@day.FullDate.ToString("yyyy-MM-dd")"
+						  data-sessions='@Html.Raw(daySessJson)'>+@(day.Sessions.Count - 2) more</span>
+				}
+			</div>
+		}
+	</div>
+
+	<!-- Footer with Legend -->
+	<div class="calendar-footer">
+		<div>
+			<span class="legend-item"><span class="legend-dot blue"></span>Team</span>
+			<span class="legend-item"><span class="legend-dot yellow"></span>Focus</span>
+			<span class="legend-item"><span class="legend-dot green"></span>Stand-up</span>
+		</div>
+		<span class="meeting-count">@Model.Sessions.Count meetings</span>
+	</div>
+</div>
+
+<!-- Past-date alert toast -->
+<div id="pastDateToast" style="display:none; position:fixed; top:80px; left:50%; transform:translateX(-50%); z-index:9999; min-width:320px;">
+	<div class="alert alert-warning alert-dismissible shadow" role="alert" style="border-left:4px solid #f59e0b;">
+		<i class="fas fa-exclamation-triangle mr-2"></i>
+		<strong>Past Date Selected!</strong> You cannot schedule a meeting on a past date. Please select today or a future date.
+		<button type="button" class="close" onclick="$(this).closest('#pastDateToast').fadeOut()">
+			<span>&times;</span>
+		</button>
+	</div>
+</div>
+
+<!-- New Meeting Modal -->
+<div class="modal fade" id="newMeetingModal" tabindex="-1" role="dialog">
+	<div class="modal-dialog modal-lg" role="document">
+		<div class="modal-content">
+			<div class="modal-header">
+				<h5 class="modal-title"><i class="fas fa-calendar-plus mr-2"></i>Schedule New Meeting</h5>
+				<button type="button" class="close" data-dismiss="modal"><span>&times;</span></button>
+			</div>
+			@Html.Partial("_NewMeetingForm")
+		</div>
+	</div>
+</div>
+
+<!-- Session Detail Modal -->
+<div class="modal fade" id="sessionDetailModal" tabindex="-1" role="dialog">
+	<div class="modal-dialog modal-lg" role="document">
+		<div class="modal-content">
+			<div class="modal-header">
+				<h5 class="modal-title" id="sdTitle"><i class="fas fa-info-circle mr-2"></i>Session Details</h5>
+				<button type="button" class="close" data-dismiss="modal"><span>&times;</span></button>
+			</div>
+			<div class="modal-body">
+
+				<!-- Admin Editable View -->
+				@if (Session["Role"] as string == "Admin")
+				{
+					<form id="inlineEditForm">
+						@Html.AntiForgeryToken()
+						<input type="hidden" name="sessionId" id="sdSessionId" />
+
+						<div id="sdLockedBanner" class="alert alert-warning d-none mb-3">
+							<i class="fas fa-lock mr-1"></i> This meeting starts within 15 minutes or has already started. Editing is locked.
+						</div>
+
+						<div class="form-group">
+							<label><strong>Title</strong></label>
+							<input type="text" name="Title" id="sdEditTitle" class="form-control" required minlength="5" />
+						</div>
+
+						<div class="form-row">
+							<div class="form-group col-md-6">
+								<label><strong><i class="fas fa-user mr-1"></i>Organizer Email</strong></label>
+								<input type="email" name="OrganizerEmail" id="sdEditOrgEmail" class="form-control" readonly />
+							</div>
+							<div class="form-group col-md-6">
+								<label><strong><i class="fas fa-flag mr-1"></i>Status</strong></label>
+								<input type="text" id="sdEditStatus" class="form-control" readonly />
+							</div>
+						</div>
+
+						<div class="form-row">
+							<div class="form-group col-md-6">
+								<label><strong><i class="fas fa-calendar mr-1"></i>Start Date & Time</strong></label>
+								<input type="datetime-local" name="StartUtc" id="sdEditStart" class="form-control" required />
+							</div>
+							<div class="form-group col-md-6">
+								<label><strong><i class="fas fa-calendar-check mr-1"></i>End Date & Time</strong></label>
+								<input type="datetime-local" name="EndUtc" id="sdEditEnd" class="form-control" required />
+							</div>
+						</div>
+
+						<div class="form-group">
+							<label><strong><i class="fas fa-list-alt mr-1"></i>Agenda</strong></label>
+							<textarea name="Agenda" id="sdEditAgenda" class="form-control" rows="3" required minlength="10"></textarea>
+						</div>
+
+						<div class="form-row">
+							<div class="form-group col-md-6">
+								<label><strong><i class="fas fa-users mr-1"></i>Registered</strong></label>
+								<input type="text" id="sdEditCount" class="form-control" readonly />
+							</div>
+							@*<div class="form-group col-md-6">
+								<label><strong><i class="fas fa-user-friends mr-1"></i>Max Participants</strong></label>
+								<input type="number" name="MaxParticipants" id="sdEditMaxPart" class="form-control" min="1" />
+							</div>*@
+						</div>
+
+						<div class="form-group">
+							<label><strong><i class="fas fa-envelope mr-1"></i>Attendee Emails</strong> <small class="text-muted">(comma separated, to add to Teams)</small></label>
+							<input type="text" name="AttendeeEmails" id="sdEditAttendees" class="form-control" placeholder="user1@company.com, user2@company.com" />
+						</div>
+
+						<!-- Join Teams section -->
+						<div id="sdJoinDiv" class="mb-3 d-none">
+							<a id="sdJoinLink" href="#" target="_blank" class="btn btn-success btn-block">
+								<i class="fas fa-video mr-1"></i> Join Teams Meeting
+							</a>
+							<button type="button" class="btn btn-outline-secondary btn-block mt-2" onclick="copyMeetingLink()">
+								<i class="fas fa-copy mr-1"></i> Copy Meeting Link
+							</button>
+						</div>
+
+						<div id="sdEditError" class="alert alert-danger d-none"></div>
+						<div id="sdEditSuccess" class="alert alert-success d-none"></div>
+
+						<div class="d-flex justify-content-between mt-3">
+							<div>
+								<button type="button" class="btn btn-outline-primary btn-sm" style="display:none;" onclick="viewAttendanceReport()">
+									<i class="fas fa-clipboard-list mr-1"></i> Attendance
+								</button>
+								<button type="button" class="btn btn-outline-success btn-sm" onclick="downloadAttendance()">
+									<i class="fas fa-download mr-1"></i> CSV
+								</button>
+							</div>
+							<div>
+								<button type="submit" class="btn btn-submit-meeting" id="sdEditSaveBtn">
+									<i class="fas fa-save mr-1"></i> Save Changes
+								</button>
+								<button type="button" id="CancelBtnID" class="btn btn-outline-primary btn-sm" onclick="CancelMeeting()">
+									Cancel Meeting
+								</button>
+							</div>
+						</div>
+					</form>
+				}
+
+				<!-- Dealer Read-Only View -->
+				@if (Session["Role"] as string == "Dealer")
+				{
+					<div class="row mb-3">
+						<div class="col-md-6">
+							<p><strong><i class="fas fa-user mr-1"></i>Organizer:</strong> <span id="sdOrganizer"></span></p>
+							<p><strong><i class="fas fa-calendar mr-1"></i>Date:</strong> <span id="sdDate"></span></p>
+						</div>
+						<div class="col-md-6">
+							<p><strong><i class="fas fa-flag mr-1"></i>Status:</strong> <span id="sdStatus" class="badge badge-info"></span></p>
+							<p><strong><i class="fas fa-users mr-1"></i>Registered:</strong> <span id="sdCount"></span> participants</p>
+						</div>
+					</div>
+					<hr />
+					<p><strong><i class="fas fa-list-alt mr-1"></i>Agenda:</strong></p>
+					<div id="sdAgenda" class="p-3 bg-light rounded mb-3" style="max-height:200px;overflow-y:auto;"></div>
+
+					<!-- Join Teams section for dealer -->
+					<div id="sdJoinDivDealer" class="mb-3 d-none">
+						<a id="sdJoinLinkDealer" href="#" target="_blank" class="btn btn-success btn-block">
+							<i class="fas fa-video mr-1"></i> Join Teams Meeting
+						</a>
+						<button type="button" class="btn btn-outline-secondary btn-block mt-2" onclick="copyMeetingLinkDealer()">
+							<i class="fas fa-copy mr-1"></i> Copy Meeting Link
+						</button>
+					</div>
+
+					<div id="sdRegisterSection" class="d-none">
+						<hr />
+						<h6><i class="fas fa-user-plus mr-1"></i> Register for this Training</h6>
+						<form id="registerForm">
+							@Html.AntiForgeryToken()
+							<input type="hidden" id="regSessionId" name="sessionId" />
+							<div class="form-row">
+								<div class="form-group col-md-6">
+									<label>Dealer Code</label>
+									<input type="text" class="form-control disable-fields" id="regDealerCode" value="@(Session["DealerCode"])" readonly />
+								</div>
+								<div class="form-group col-md-6">
+									<label>Owner Email <span class="text-danger">*</span></label>
+									<input type="email" name="primaryEmail" id="regEmail" class="form-control disable-fields" value="@(Session["DealerEmail"])" required readonly />
+								</div>
+							</div>
+							<div class="form-group">
+								<label>Manager Email</label>
+								<input type="email" name="secondaryEmail" id="regSecEmail" class="form-control disable-fields"  readonly />
+
+							</div>
+							<div class="form-group">
+								<label>Display Name <span class="text-danger">*</span></label>
+								<input type="text" name="DisplayName" id="DisplayNameID" maxlength="20" placeholder="e.g. Ashutosh Jagdale" class="form-control" />
+								<small class="form-text text-muted">
+									Enter the full name your guest will type when joining the Teams meeting.
+									This is used to mark attendance after the meeting.
+								</small>
+							</div>
+							<div id="regError" class="alert alert-danger d-none"></div>
+							<div id="regSuccess" class="alert alert-success d-none"></div>
+							<button type="submit" class="btn btn-submit-meeting btn-block" id="regSubmitBtn">
+								<i class="fas fa-check mr-1"></i> Register Now
+							</button>
+						</form>
+					</div>
+					@*<div id="sdAlreadyRegistered" class="d-none mt-3">
+						<div class="alert alert-success mb-0">
+							<i class="fas fa-check-circle mr-1"></i> You have been registered for this session.
+						</div>
+					</div>*@
+				}
+			</div>
+			<div class="modal-footer">
+				<button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+			</div>
+		</div>
+	</div>
+</div>
+
+<!-- Day Sessions Modal -->
+<div class="modal fade" id="daySessModal" tabindex="-1" role="dialog">
+	<div class="modal-dialog" role="document">
+		<div class="modal-content">
+			<div class="modal-header">
+				<h5 class="modal-title"><i class="fas fa-calendar-day mr-2"></i>Sessions on <span id="daySessDate"></span></h5>
+				<button type="button" class="close" data-dismiss="modal"><span>&times;</span></button>
+			</div>
+			<div class="modal-body">
+				<div id="daySessList"></div>
+			</div>
+			<div class="modal-footer">
+				<button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+			</div>
+		</div>
+	</div>
+</div>
+
+
+<script>
+	function isValidEmail(email) {
+		debugger;
+		var emailRegex = /^[^\s@@]+@@[^\s@@]+\.[^\s@@]+$/;
+		return emailRegex.test(email);
+	}
+
+	function allowInput(e) {
+		var evt = e || window.event;
+		var charCode = evt.which || evt.keyCode;
+
+		// Allow special control keys (backspace, tab, enter)
+		if (charCode === 8 || charCode === 9 || charCode === 13) {
+			return true;
+		}
+
+		var char = String.fromCharCode(charCode);
+
+		// ✅ Allowed characters
+		var regex = /^[A-Za-z0-9 \-\/\.,!]$/;
+
+		if (!regex.test(char)) {
+			if (evt.preventDefault) {
+				evt.preventDefault(); // Stop invalid input
+			}
+			return false;
+		}
+
+		return true;
+	}
+	//function allowInput(e) {
+	//	var evt = e || window.event;
+	//	var charCode = evt.which || evt.keyCode;
+
+	//	// Allow special control keys (backspace, tab, enter)
+	//	if (charCode === 8 || charCode === 9 || charCode === 13) {
+	//		return true;
+	//	}
+
+	//	var char = String.fromCharCode(charCode);
+
+	//	// ✅ Allowed characters
+	//	var regex = /^[A-Za-z0-9 \-\/\.,!]$/;
+
+	//	if (!regex.test(char)) {
+	//		if (evt.preventDefault) {
+	//			evt.preventDefault(); // Stop invalid input
+	//		}
+	//		return false;
+	//	}
+
+	//	return true;
+	//}
+	var userRole = '@(Session["Role"])';
+	$(document).ready(function () {
+		debugger;
+		var cancelMsg = '@TempData["CancelMsg"]' ?? "";
+		if (cancelMsg != "") {
+			swal(cancelMsg);
+		}
+		var inputs = document.querySelectorAll('input[type="text"], input[type="email"], textarea');
+		inputs.forEach(function (element) {
+			element.addEventListener('copy', function (e) { e.preventDefault(); });
+			element.addEventListener('paste', function (e) { e.preventDefault(); });
+			element.addEventListener('cut', function (e) { e.preventDefault(); });
+			// Prevent space as first character
+
+			element.addEventListener('keydown', function (e) {
+				if (e.key === ' ' && this.value.length === 0) {
+					e.preventDefault();
+				}
+			});
+			if (element.getAttribute("id") == "mtgAttendees" || element.getAttribute("id") == "sdEditAttendees" ) {
+
+				element.addEventListener('keypress', function (e) {
+					var evt = e || window.event;
+					var charCode = evt.which || evt.keyCode;
+
+					// Allow special control keys (backspace, tab, enter)
+					if (charCode === 8 || charCode === 9 || charCode === 13) {
+						return true;
+					}
+					var char = String.fromCharCode(charCode);
+
+					// Prevent consecutive spaces
+
+					if (char === ' ' && (this.value.length === 0 || this.value.slice(-1) === ' ')) {
+						evt.preventDefault();
+						return false;
+					}
+
+					// ✅ Allowed characters
+					var regex = /^[A-Za-z0-9 \-\/\.,@@]$/;
+
+					if (!regex.test(char)) {
+						if (evt.preventDefault) {
+							evt.preventDefault(); // Stop invalid input
+						}
+						return false;
+					}
+					return true;
+				});
+
+				element.addEventListener('blur', function (e) {
+
+						if (element.value !== '' && !element.value.endsWith(',')) {
+							element.value = element.value + ',';
+						}
+				});
+			}
+			else {
+				element.addEventListener('keypress', function (e) {
+					var evt = e || window.event;
+					var charCode = evt.which || evt.keyCode;
+
+					// Allow special control keys (backspace, tab, enter)
+					if (charCode === 8 || charCode === 9 || charCode === 13) {
+						return true;
+					}
+					var char = String.fromCharCode(charCode);
+
+					if (char === ' ' && (this.value.length === 0 || this.value.slice(-1) === ' ')) {
+						evt.preventDefault();
+						return false;
+					}
+
+					// ✅ Allowed characters
+					var regex = /^[A-Za-z0-9 \-\/\.,!]$/;
+					//var regex1 = /^[A-Za-z0-9 \-\/\.,!@@]$/;
+
+					console.log("Get input {input}", element.getAttribute("id"));
+					if (element.getAttribute("id") == "mtgAttendees") {
+						debugger;
+						if (element.value !== '' && !element.value.endsWith(',')) {
+							element.value = element.value + ',';
+						}
+
+						//if (!regex1.test(char)) {
+						//	if (evt.preventDefault) {
+						//		evt.preventDefault(); // Stop invalid input
+						//	}
+						//	return false;
+						//}
+					}
+					if (!regex.test(char)) {
+						if (evt.preventDefault) {
+							evt.preventDefault(); // Stop invalid input
+						}
+						return false;
+					}
+					return true;
+				});
+			}
+
+		});
+
+
+
+		 var currentSessionId = 0;
+		var currentSessionData = null;
+		debugger;
+
+
+        // Today's date string for min attribute (YYYY-MM-DDTHH:MM)
+
+        var todayDateStr = new Date().toISOString().slice(0, 10);
+        $('#mtgStart').attr('min', todayDateStr + 'T00:00');
+        $('#mtgEnd').attr('min', todayDateStr + 'T00:00');
+		// Client-side validation for New Meeting form
+		$('#newMeetingForm').validate({
+			rules: {
+				Title: { required: true, minlength: 5 },
+				Agenda: { required: true, minlength: 10 },
+				StartUtc: { required: true },
+				EndUtc: { required: true }
+			},
+			messages: {
+				Title: { required: 'Title is required', minlength: 'Title must be between 5 and 256 characters' },
+				Agenda: { required: 'Agenda is required', minlength: 'Agenda must be between 10 and 4000 characters' },
+				StartUtc: { required: 'Start date is required' },
+				EndUtc: { required: 'End date is required' },
+				AttendeeEmails: { required: 'Attendee Emails is required' }
+			},
+			errorClass: 'text-danger small',
+			errorElement: 'span',
+			highlight: function (el) { $(el).addClass('is-invalid'); },
+			unhighlight: function (el) { $(el).removeClass('is-invalid'); },
+			submitHandler: function (form) {
+				var $btn = $('#mtgSubmitBtn');
+				$btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin mr-1"></i> Creating...');
+				$('#mtgError').addClass('d-none');
+				$('#mtgSuccess').addClass('d-none');
+
+				$.ajax({
+					url: $(form).attr('action'),
+					type: 'POST',
+					data: $(form).serialize(),
+					success: function (resp) {
+						if (resp.id == 2) // Get unauthorised from API
+						{
+							debugger;
+							setTimeout(function () {
+								swal({
+									title: "",
+									text: "Your token has expired. Please click the button below to authorize via SSO. You will then be automatically redirected to the Training Calendar Dashboard.",
+									showCancelButton: false,
+									confirmButtonColor: '#3085d6',
+									cancelButtonColor: '#d33',
+									confirmButtonText: 'Yes',
+									confirmButtonClass: 'btn btn-success',
+									cancelButtonClass: 'btn btn-danger',
+								}, function () {
+									location.href = "/TrainingCalendar/TrainingDashboard/Index";
+								});
+							}, 1000);
+							return false;
+						}
+						if (resp.success) {
+							$('#mtgSuccess').text('Meeting created successfully! Refreshing...').removeClass('d-none');
+							setTimeout(function () { location.reload(); }, 1500);
+						} else {
+							swal(resp.message);
+							$btn.prop('disabled', false).html('<i class="fas fa-paper-plane mr-1"></i> Create & Send Invites');
+						}
+					},
+					error: function () {
+						swal("We could not process your request, Please try after sometime");
+						$btn.prop('disabled', false).html('<i class="fas fa-paper-plane mr-1"></i> Create & Send Invites');
+					}
+				});
+			}
+		});
+
+		 // Admin inline edit form submit
+    $('#inlineEditForm').on('submit', function (e) {
+        e.preventDefault();
+        var $btn = $('#sdEditSaveBtn');
+        $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin mr-1"></i> Saving...');
+        $('#sdEditError').addClass('d-none');
+        $('#sdEditSuccess').addClass('d-none');
+
+        $.ajax({
+            url: '@Url.Action("UpdateAjax", "Meeting", new { area = "TrainingCalendar" })',
+            type: 'POST',
+            data: $(this).serialize(),
+            success: function (resp) {
+                if (resp.success) {
+                    $('#sdEditSuccess').text('Meeting updated successfully! Refreshing...').removeClass('d-none');
+                    setTimeout(function () { location.reload(); }, 1500);
+				} else {
+					swal(resp.message);
+                    $btn.prop('disabled', false).html('<i class="fas fa-save mr-1"></i> Save Changes');
+                }
+            },
+            error: function () {
+				swal("We could not process your request, Please try after sometime.");
+                $btn.prop('disabled', false).html('<i class="fas fa-save mr-1"></i> Save Changes');
+            }
+        });
+	});
+
+
+
+
+    // Dealer registration form submit
+    $('#registerForm').on('submit', function (e) {
+		e.preventDefault();
+		debugger;
+
+
+		var displayname = $("#DisplayNameID").val();
+		var EmailID = $("#regSecEmail").val().trim();
+		if (displayname == "") {
+			swal("Please enter display name");
+			return false;
+		}
+
+		if (EmailID == "") {
+			swal("Please enter email id");
+			return false;
+		}
+		if (!isValidEmail(EmailID)) {
+			swal("Please enter valid email id");
+			return false;
+		}
+		var $btn = $('#regSubmitBtn');
+		$btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin mr-1"></i> Registering...');
+		$('#regError').addClass('d-none');
+		$('#regSuccess').addClass('d-none');
+        $.ajax({
+            url: '@Url.Action("RegisterForSession", "TrainingDashboard", new { Area = "TrainingCalendar" })',
+            type: 'POST',
+            data: $(this).serialize(),
+			success: function (resp) {
+				debugger;
+				if (resp.success) {
+
+					setTimeout(function () {
+						swal({
+							title: "",
+							text: "You have been registered for this session.",
+							showCancelButton: false,
+							confirmButtonColor: '#3085d6',
+							cancelButtonColor: '#d33',
+							confirmButtonText: 'Close',
+							confirmButtonClass: 'btn btn-success',
+							cancelButtonClass: 'btn btn-danger',
+						}, function () {
+							location.href = "/TrainingCalendar/TrainingDashboard/Index";
+						});
+					}, 1000);
+
+                    //$('#regSuccess').text('Registration successful! You are now enrolled.').removeClass('d-none');
+                    //$('#sdRegisterSection').addClass('d-none');
+                    //$('#sdAlreadyRegistered').removeClass('d-none');
+                    //var cnt = parseInt($('#sdCount').text()) || 0;
+                    //$('#sdCount').text(cnt + 1);
+				} else {
+					$btn.prop('disabled', false).html('<i class="fas fa-check mr-1"></i> Register Now');
+					swal(resp.message);
+					return false;
+                }
+                $btn.prop('disabled', false).html('<i class="fas fa-check mr-1"></i> Register Now');
+            },
+            error: function () {
+                $('#regError').text('Server error. Please try again.').removeClass('d-none');
+                $btn.prop('disabled', false).html('<i class="fas fa-check mr-1"></i> Register Now');
+            }
+        });
+    });
+    });
+
+
+    // Show all sessions for a day when "+N more" is clicked
+    function showDaySessions(el) {
+        var date = el.getAttribute('data-date');
+        var sessions = JSON.parse(el.getAttribute('data-sessions'));
+        var html = '<ul class="list-group">';
+        for (var i = 0; i < sessions.length; i++) {
+            var s = sessions[i];
+            html += '<li class="list-group-item list-group-item-action" style="cursor:pointer;" ' +
+                'onclick="$(\'#daySessModal\').modal(\'hide\'); showSessionDetail(' + s.SessionId + ');">' +
+                '<strong>' + escapeHtml(s.Title) + '</strong>' +
+                '<br><small class="text-muted">' + escapeHtml(s.Start) + (s.End ? ' \u2013 ' + escapeHtml(s.End) : '') + '</small>' +
+                '</li>';
+        }
+        html += '</ul>';
+        $('#daySessDate').text(date);
+        $('#daySessList').html(html);
+        $('#daySessModal').modal('show');
+    }
+
+    // Show alert when admin clicks a past date
+    function showPastDateAlert() {
+        $('#pastDateToast').stop(true, true).fadeIn(200);
+        setTimeout(function () { $('#pastDateToast').fadeOut(400); }, 4000);
+    }
+
+    // Open new meeting modal with date pre-filled
+	function openNewMeeting(dateStr) {
+		debugger;
+
+        if (!dateStr) return;
+        var selected = new Date(dateStr);
+        selected.setHours(0, 0, 0, 0);
+        var today = new Date();
+        today.setHours(0, 0, 0, 0);
+        if (selected < today) {
+            showPastDateAlert();
+            return;
+        }
+
+
+		var now = new Date();
+
+		var hours = String(now.getHours()).padStart(2, '0');
+		var minutes = String(now.getMinutes()).padStart(2, '0');
+
+		var dt = dateStr + 'T' + hours + ':' + minutes;
+
+		var end = new Date(now);
+		end.setHours(end.getHours() + 1);
+
+		var endHours = String(end.getHours()).padStart(2, '0');
+		var endMinutes = String(end.getMinutes()).padStart(2, '0');
+
+		var dtEnd = dateStr + 'T' + endHours + ':' + endMinutes;
+
+        $('#mtgStart').val(dt);
+		$('#mtgEnd').val(dtEnd);
+
+        $('#mtgError').addClass('d-none');
+        $('#mtgSuccess').addClass('d-none');
+        $('#newMeetingModal').modal('show');
+    }
+
+    // Check if meeting is in the past or within 15 minutes of starting
+    function isMeetingLocked(startUtcIso) {
+        if (!startUtcIso) return false;
+        var startTime = new Date(startUtcIso).getTime();
+        var now = new Date().getTime();
+        var fifteenMinMs = 15 * 60 * 1000;
+        return now >= (startTime - fifteenMinMs);
+    }
+
+    // Check if meeting date is entirely in the past (today's meetings are still editable)
+    function isMeetingPast(startUtcIso) {
+        if (!startUtcIso) return false;
+        var startDate = new Date(startUtcIso);
+        var today = new Date();
+        startDate.setHours(0, 0, 0, 0);
+        today.setHours(0, 0, 0, 0);
+        return startDate < today;
+    }
+
+    // Strip HTML tags to show plain text in textarea
+    function stripHtml(html) {
+        if (!html) return '';
+        var tmp = document.createElement('div');
+        tmp.innerHTML = html;
+        return tmp.textContent || tmp.innerText || '';
+    }
+
+    function toLocalDatetimeStr(dt) {
+        var y = dt.getFullYear();
+        var m = ('0' + (dt.getMonth() + 1)).slice(-2);
+        var day = ('0' + dt.getDate()).slice(-2);
+        var h = ('0' + dt.getHours()).slice(-2);
+        var min = ('0' + dt.getMinutes()).slice(-2);
+        return y + '-' + m + '-' + day + 'T' + h + ':' + min;
+    }
+
+    // Show session detail popup
+	function showSessionDetail(sessionId) {
+		debugger;
+        currentSessionId = sessionId;
+        currentSessionData = null;
+        $.getJSON('@Url.Action("GetSessionDetails", "TrainingDashboard", new { Area = "TrainingCalendar" })', { sessionId: sessionId }, function (resp) {
+			if (resp.success) {
+				debugger;
+				var d = resp.data;
+				currentSessionData = d;
+				$('#sdTitle').html('<i class="fas fa-info-circle mr-2"></i>' + escapeHtml(d.Title));
+
+				if (userRole === 'Admin') {
+					if (d.Status == "Completed" || d.Status == "Cancelled") {
+						$("#CancelBtnID").hide();
+					}
+					else $("#CancelBtnID").show();
+					// Populate editable form
+					$('#sdSessionId').val(sessionId);
+					$('#sdEditTitle').val(d.Title || '');
+					$('#sdEditOrgEmail').val('@(Session["Username"])');  // auto-fill from SSO
+					$('#sdEditStatus').val(d.Status || '');
+					$('#sdEditAgenda').val(stripHtml(d.Agenda || ''));
+					$('#sdEditCount').val((d.RegisteredCount || 0) + ' participants');
+					$('#sdEditMaxPart').val(d.MaxParticipants || 100);
+					$('#sdEditAttendees').val(d.AttendeeEmails || '');
+					$('#sdEditError').addClass('d-none');
+					$('#sdEditSuccess').addClass('d-none');
+
+					// Bind dates using ISO string from server
+					if (d.StartUtcIso) {
+						$('#sdEditStart').val(d.StartUtcIso);
+					}
+					if (d.EndUtcIso) {
+						$('#sdEditEnd').val(d.EndUtcIso);
+					}
+
+					// Determine if locked: past meetings OR within 15 min of start
+					var past = isMeetingPast(d.StartUtcIso);
+					var locked = past || isMeetingLocked(d.StartUtcIso);
+
+					var editableFields = '#sdEditTitle, #sdEditStart, #sdEditEnd, #sdEditAgenda, #sdEditMaxPart, #sdEditAttendees,#sdEditOrgEmail,#sdEditStatus,#sdEditCount';
+					if (locked) {
+						$(editableFields).prop('readonly', true).prop('disabled', true).addClass("disable-fields");
+						if (past) {
+							$('#sdLockedBanner').html('<i class="fas fa-lock mr-1"></i> This is a past meeting. Editing is not allowed.').removeClass('d-none');
+						} else {
+							$('#sdLockedBanner').html('<i class="fas fa-lock mr-1"></i> This meeting starts within 15 minutes or has already started. Editing is locked.').removeClass('d-none');
+						}
+						$('#sdEditSaveBtn,#CancelBtnID').prop('disabled', true).addClass('d-none');
+
+					} else {
+						$(editableFields).prop('readonly', false).prop('disabled', false).removeClass("disable-fields");
+						$('#sdLockedBanner').addClass('d-none');
+						$('#sdEditSaveBtn,#CancelBtnID').prop('disabled', false).removeClass('d-none');
+					}
+
+					// Teams join link — only show for upcoming/active meetings
+					if (d.JoinWebUrl && !past) {
+						$('#sdJoinLink').attr('href', d.JoinWebUrl);
+						$('#sdJoinDiv').removeClass('d-none');
+					} else {
+						$('#sdJoinDiv').addClass('d-none');
+					}
+
+				}
+				else if (userRole === 'Dealer') {
+					// Populate read-only fields
+					$("#CancelBtnID").hide();
+					$('#regSubmitBtn').show();
+					$('#sdOrganizer').text(d.OrganizerEmail || 'N/A');
+					$('#sdDate').text(formatDateRange(d.StartLocal, d.EndLocal));
+					$('#sdStatus').text(d.Status);
+					$('#sdCount').text(d.RegisteredCount || 0);
+					$('#sdAgenda').html(d.Agenda || '<em>No agenda provided</em>');
+					debugger;
+					$('#regSecEmail').val(resp.managerEmail);
+
+
+					// Teams join link for dealer
+					if (d.JoinWebUrl) {
+						$('#sdJoinLinkDealer').attr('href', d.JoinWebUrl);
+						$('#sdJoinDivDealer').removeClass('d-none');
+					} else {
+						$('#sdJoinDivDealer').addClass('d-none');
+					}
+
+
+					// Registration section
+					if (resp.isRegistered) {
+						$('#sdRegisterSection').addClass('d-none');
+						$('#sdAlreadyRegistered').removeClass('d-none');
+					} else {
+
+						$('#sdRegisterSection').removeClass('d-none');
+						$('#sdAlreadyRegistered').addClass('d-none');
+						$('#regSessionId').val(sessionId);
+						if (resp.dealerEmail) $('#regEmail').val(resp.dealerEmail);
+						if (resp.dealerCode) $('#regDealerCode').val(resp.dealerCode);
+						if (d.DisplayName != null && d.DisplayName != "") {
+							$('#DisplayNameID').val(d.DisplayName).prop("readonly", true);
+							$('#regSubmitBtn').hide();
+						}
+						$('#regError').addClass('d-none');
+						$('#regSuccess').addClass('d-none');
+						$('#regSubmitBtn').prop('disabled', false);
+					}
+				}
+
+				$('#sessionDetailModal').modal('show');
+			}
+			else {
+				swal(resp.message);
+				return;
+			}
+        });
+    }
+
+    function formatDateRange(startLocal, endLocal) {
+        if (!startLocal || !endLocal) {
+            return (startLocal || '') + (endLocal ? (' - ' + endLocal) : '');
+        }
+        var startParts = startLocal.split(',');
+        var endParts = endLocal.split(',');
+        if (startParts.length >= 2 && endParts.length >= 2) {
+            var startDate = startParts[0].trim();
+            var startTime = startParts.slice(1).join(',').trim();
+            var endDate = endParts[0].trim();
+            var endTime = endParts.slice(1).join(',').trim();
+            if (startDate === endDate) {
+                return startDate + ', ' + startTime + ' - ' + endTime;
+            }
+        }
+        return startLocal + ' - ' + endLocal;
+    }
+
+	function showToast(msg) {
+		debugger;
+    var $t = $('<div class="mini-toast">' + msg + '</div>').appendTo('body');
+    setTimeout(function () { $t.fadeOut(300, function () { $(this).remove(); }); }, 1200);
+}
+    // Copy meeting link (admin)
+    function copyMeetingLink() {
+        var link = $('#sdJoinLink').attr('href');
+        if (link && navigator.clipboard) {
+            navigator.clipboard.writeText(link).then(function () {
+				showToast('Copied!');
+            });
+        }
+    }
+
+    // Copy meeting link (dealer)
+    function copyMeetingLinkDealer() {
+        var link = $('#sdJoinLinkDealer').attr('href');
+        if (link && navigator.clipboard) {
+            navigator.clipboard.writeText(link).then(function () {
+				showToast('Meeting link copied!');
+            });
+        }
+	}
+
+
+
+
+
+        //form.submit();
+        //form.remove();
+
+
+
+    // Admin: View attendance report (server-rendered partial)
+    function viewAttendanceReport() {
+        if (!currentSessionId) return;
+        var $attendDiv = $('#sdAttendanceDiv');
+        if ($attendDiv.length === 0) {
+            $attendDiv = $('<div id="sdAttendanceDiv" class="mb-3"></div>');
+            $('#inlineEditForm').prepend($attendDiv);
+        }
+        $attendDiv.html('<p class="text-muted"><i class="fas fa-spinner fa-spin mr-1"></i> Loading...</p>');
+
+        $.get('@Url.Action("GetAttendanceReportPartial", "Meeting", new { area = "TrainingCalendar" })',
+              { sessionId: currentSessionId })
+            .done(function (html) { $attendDiv.html(html); })
+            .fail(function (xhr) {
+                $attendDiv.html(xhr.responseText
+                    || '<div class="alert alert-danger">Could not load attendance report.</div>');
+            });
+	}
+
+    function escapeHtml(str) {
+        if (!str) return '';
+        return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    // Admin: Download attendance CSV
+    function downloadAttendance() {
+        if (!currentSessionId) return;
+        var form = $('<form method="POST" action="@Url.Action("DownloadAttendanceCSV", "Meeting", new { area = "TrainingCalendar" })"></form>');
+        form.append('<input type="hidden" name="sessionId" value="' + currentSessionId + '" />');
+        form.append('@Html.AntiForgeryToken()');
+        $('body').append(form);
+        form.submit();
+        form.remove();
+	}
+
+	  function CancelMeeting() {
+        if (!currentSessionId) return;
+        var form = $('<form method="POST" action="@Url.Action("CancelMeeting", "Meeting", new { area = "TrainingCalendar" })"></form>');
+        form.append('<input type="hidden" name="sessionId" value="' + currentSessionId + '" />');
+        form.append('@Html.AntiForgeryToken()');
+        $('body').append(form);
+        form.submit();
+        form.remove();
+    }
+
+
+
+    // Reset new meeting modal on close
+    $('#newMeetingModal').on('hidden.bs.modal', function () {
+        var v = $('#newMeetingForm').validate();
+        v.resetForm();
+        $('#newMeetingForm').find('.is-invalid').removeClass('is-invalid');
+        $('#newMeetingForm')[0].reset();
+        $('#mtgError').addClass('d-none');
+        $('#mtgSuccess').addClass('d-none');
+        $('#mtgSubmitBtn').prop('disabled', false).html('<i class="fas fa-paper-plane mr-1"></i> Create & Send Invites');
+    });
+
+    // Reset session detail modal on close
+    $('#sessionDetailModal').on('hidden.bs.modal', function () {
+        $('#sdAttendanceDiv').remove();
+        if (userRole === 'Admin') {
+            $('#sdEditSaveBtn').prop('disabled', false).html('<i class="fas fa-save mr-1"></i> Save Changes');
+            $('#sdEditError').addClass('d-none');
+            $('#sdEditSuccess').addClass('d-none');
+        }
+    });
+	/*});*/
+</script>
+
+
+<script src="~/Scripts/jquery.validate.min.js"></script>
+	<script src="~/Scripts/jquery.validate.unobtrusive.min.js"></script>
+
