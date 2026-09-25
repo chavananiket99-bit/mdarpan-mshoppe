@@ -1,0 +1,203 @@
+@model List<Mdarpan.Models.BAL.CalendarSessionCardViewModel>
+
+@{
+	ViewBag.Title = "Training Report";
+	ViewBag.ActiveTab = "Report";
+	Layout = "~/Views/Shared/_Layout.cshtml";
+}
+
+<link href="~/Content/TrainingCalendar/site.css" rel="stylesheet" />
+<script>
+	$(document).ready(function () {
+		jQuery('#ReportID').wrap('<div class="dataTables_scroll" />');
+		var table = $('#ReportID').DataTable({
+			//responsive: true,
+			paging: true,
+			"aLengthMenu": [[10, 25, 50, 100, 200, 300, 500], [10, 25, 50, 100, 200, 300, 500]],
+			"iDisplayLength": 10,
+			"oLanguage": { "sSearch": "" },
+			sort: false
+		});
+	});
+</script>
+
+<!-- Page Header -->
+<div class="page-header">
+	<h2><i class="fas fa-chart-bar mr-2"></i>TRAINING REPORT</h2>
+	@if (Model != null)
+	{
+		<span style="font-size:0.85rem;opacity:0.8;"> @Model.Count sessions total</span>
+	}
+	else
+	{
+		<span style="font-size:0.85rem;opacity:0.8;">  sessions total</span>
+	}
+
+</div>
+
+@if (TempData["DownloadError"] != null)
+{
+	<div class="alert alert-danger alert-dismissible" style="border-radius:10px;">
+		<i class="fas fa-exclamation-circle mr-1"></i> @TempData["DownloadError"]
+		<button type="button" class="close" data-dismiss="alert"><span>&times;</span></button>
+	</div>
+}
+@if (TempData["RoleAuthMessage"] == null)
+{
+	if (Model == null || Model.Count == 0)
+	{
+		<div class="alert alert-info" style="border-radius:10px;">
+			<i class="fas fa-info-circle mr-1"></i> No training sessions found.
+		</div>
+	}
+	else
+	{
+
+		<!-- Summary Cards -->
+		<div class="row mb-4 p-2 d-flex justify-content-center">
+			@{
+				var upcoming = Model.Count(s => s.Status == "Scheduled");
+				var completed = Model.Count(s => s.Status == "Completed");
+				var totalRegistrations = Model.Sum(s => s.RegisteredCount);
+				var Cancelled = Model.Count(s => s.Status == "Cancelled");
+			}
+			<div class="col-md-3 col-sm-6 mb-3">
+				<div class="stat-card" style="border-top:3px solid #42a5f5;">
+					<div class="stat-value" style="color:#42a5f5;">@Model.Count</div>
+					<div class="stat-label">Total Sessions</div>
+				</div>
+			</div>
+			<div class="col-md-3 col-sm-6 mb-3">
+				<div class="stat-card" style="border-top:3px solid #66bb6a;">
+					<div class="stat-value" style="color:#66bb6a;">@upcoming</div>
+					<div class="stat-label">Scheduled</div>
+				</div>
+			</div>
+			<div class="col-md-3 col-sm-6 mb-3">
+				<div class="stat-card" style="border-top:3px solid var(--mahindra-red);">
+					<div class="stat-value" style="color:var(--mahindra-red);">@completed</div>
+					<div class="stat-label">Completed</div>
+				</div>
+			</div>
+			<div class="col-md-3 col-sm-6 mb-3">
+				<div class="stat-card" style="border-top:3px solid #ffa726;">
+					<div class="stat-value" style="color:#ffa726;">@totalRegistrations</div>
+					<div class="stat-label">Total Registrations</div>
+				</div>
+			</div>
+			<div class="col-md-3 col-sm-6 mb-3">
+				<div class="stat-card" style="border-top:3px solid #ffa726;">
+					<div class="stat-value" style="color:#ffa726;">@Cancelled</div>
+					<div class="stat-label">Cancelled</div>
+				</div>
+			</div>
+
+		</div>
+
+		<!-- Sessions Table -->
+
+		<div class="table-card p-2 m-2">
+			<a href="@Url.Action("DownloadReport","Meeting",new { Area="TrainingCalendar"})" class="btn btn-sm btn-outline-success ml-1 btn-download" title="Download CSV" style="border-radius:6px;">
+				<i class="fas fa-download"></i>
+			</a>
+			<div class="table-responsive">
+				<table class="table table-hover mb-0" id="ReportID">
+					<thead>
+						<tr>
+							<th>ID</th>
+							<th>Title</th>
+							<th>Organizer</th>
+							<th>Date & Time</th>
+							<th>Status</th>
+							<th>Registrations</th>
+							<th>Actions</th>
+						</tr>
+					</thead>
+					<tbody>
+						@foreach (var session in Model.OrderByDescending(s => s.StartUtc))
+						{
+							var statusBg = "#e3f2fd"; var statusColor = "#1565c0";
+							if (session.Status == "Completed") { statusBg = "#e8f5e9"; statusColor = "#2e7d32"; }
+							else if (session.Status == "Cancelled") { statusBg = "#ffebee"; statusColor = "#c62828"; }
+							else if (session.Status == "InProgress") { statusBg = "#fff8e1"; statusColor = "#e65100"; }
+
+							<tr>
+								<td style="font-weight:600;color:#78909c;">@session.SessionId</td>
+								<td><strong style="color:#2c3e50;">@session.Title</strong></td>
+								<td style="color:#546e7a;">@session.OrganizerEmail</td>
+								<td style="color:#546e7a;font-size:0.85rem;">@session.StartLocal</td>
+								<td>
+									<span style="background:@statusBg;color:@statusColor;padding:4px 10px;border-radius:12px;font-size:0.75rem;font-weight:600;">
+										@session.Status
+									</span>
+								</td>
+								<td class="text-center">
+									<span class="badge badge-mahindra">@session.RegisteredCount</span>
+								</td>
+								<td>
+									<button class="btn btn-sm btn-outline-primary" onclick="viewReport(@session.SessionId)" title="Attendance" style="border-radius:6px;">
+										<i class="fas fa-clipboard-list"></i>
+									</button>
+									<button class="btn btn-sm btn-outline-success ml-1" onclick="downloadCSV(@session.SessionId)" title="Download CSV" style="border-radius:6px;">
+										<i class="fas fa-download"></i>
+									</button>
+								</td>
+							</tr>
+						}
+					</tbody>
+				</table>
+			</div>
+		</div>
+
+
+	}
+}
+else
+{
+	<div class="alert alert-info" style="border-radius:10px;">
+		<i class="fas fa-info-circle mr-1"></i>@TempData["RoleAuthMessage"]
+	</div>
+}
+<!-- Attendance Modal -->
+<div class="modal fade" id="attendanceModal" tabindex="-1" role="dialog">
+	<div class="modal-dialog modal-lg" role="document">
+		<div class="modal-content">
+			<div class="modal-header">
+				<h5 class="modal-title"><i class="fas fa-clipboard-list mr-2"></i>Attendance Report</h5>
+				<button type="button" class="close" data-dismiss="modal"><span>&times;</span></button>
+			</div>
+			<div class="modal-body" id="attendanceContent">
+				<p class="text-muted">Loading attendance data...</p>
+			</div>
+			<div class="modal-footer">
+				<button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+			</div>
+		</div>
+	</div>
+</div>
+
+
+<script>
+    function viewReport(sessionId) {
+        $('#attendanceContent').html('<p class="text-muted"><i class="fas fa-spinner fa-spin mr-1"></i> Loading...</p>');
+        $('#attendanceModal').modal('show');
+        $.get('@Url.Action("GetAttendanceReportPartial", "Meeting", new { area = "TrainingCalendar" })', { sessionId: sessionId })
+            .done(function (html) {
+                $('#attendanceContent').html(html);
+            })
+            .fail(function (xhr) {
+                $('#attendanceContent').html(xhr.responseText
+                    || '<div class="alert alert-danger">Error loading attendance report.</div>');
+            });
+    }
+
+    function downloadCSV(sessionId) {
+        var form = $('<form method="POST" action="@Url.Action("DownloadAttendanceCSV", "Meeting", new { area = "TrainingCalendar" })"></form>');
+        form.append('<input type="hidden" name="sessionId" value="' + sessionId + '" />');
+        form.append('@Html.AntiForgeryToken()');
+        $('body').append(form);
+        form.submit();
+        form.remove();
+    }
+</script>
+
